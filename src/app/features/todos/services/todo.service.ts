@@ -1,17 +1,16 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { Todo } from '../models/todo.model';
-
-@Injectable({
-  providedIn: 'root',
-})
+import { GoogleSheetsService } from '../../../core/services/google-sheets.service';
+@Injectable({ providedIn: 'root' })
 export class TodoService {
   private readonly STORAGE_KEY = 'todos';
+  private sheetsService = inject(GoogleSheetsService);
   private _todos = signal<Todo[]>(this.loadFromStorage());
 
   todos = this._todos.asReadonly();
   remaining = computed(() => this._todos().filter(t => !t.completed).length);
 
-  add(title: string): void {
+  async add(title: string): Promise<void> {
     const todo: Todo = {
       id: crypto.randomUUID(),
       title: title.trim(),
@@ -20,21 +19,31 @@ export class TodoService {
     };
     this._todos.update(todos => [...todos, todo]);
     this.saveToStorage();
+    await this.sheetsService.add(todo);
   }
 
-  toggle(id: string): void {
-    this._todos.update(todos => todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  async toggle(id: string): Promise<void> {
+    const todo = this._todos().find(t => t.id === id);
+    if (!todo) return;
+    this._todos.update(todos =>
+      todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+    );
     this.saveToStorage();
+    await this.sheetsService.toggle(id, !todo.completed);
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     this._todos.update(todos => todos.filter(t => t.id !== id));
     this.saveToStorage();
+    await this.sheetsService.delete(id);
   }
 
-  update(id: string, title: string): void {
-    this._todos.update(todos => todos.map(t => t.id === id ? { ...t, title } : t));
+  async update(id: string, title: string): Promise<void> {
+    this._todos.update(todos =>
+      todos.map(t => t.id === id ? { ...t, title } : t)
+    );
     this.saveToStorage();
+    await this.sheetsService.update(id, title);
   }
 
   private loadFromStorage(): Todo[] {
